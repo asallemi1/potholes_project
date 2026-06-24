@@ -75,6 +75,7 @@ class YOLOSegmentationPipeline:
             "map50": float(metrics.seg.map50),
             "map50_95": float(metrics.seg.map),
         }
+        results.update(self._evaluate_test_masks(model))
         Config.YOLO_METRICS_PATH.write_text(json.dumps(results, indent=2), encoding="utf-8")
         return results
 
@@ -190,3 +191,58 @@ names:
 """
         self.config.dataset_yaml.write_text(content.strip(), encoding="utf-8")
         return self.config.dataset_yaml
+
+    def _evaluate_test_masks(self, model) -> dict[str, float]:
+        image_dir = Config.DATA_DIR / "yolo" / "images" / "test"
+        label_dir = Config.DATA_DIR / "yolo" / "labels" / "test"
+        counts = {"tp": 0.0, "tn": 0.0, "fp": 0.0, "fn": 0.0}
+
+        image_paths = sorted(
+            path for path in image_dir.iterdir()
+            if path.suffix.lower() in self.IMAGE_EXTENSIONS
+        )
+
+        for image_path in image_paths:
+            image = cv2.imread(str(image_path))
+            if image is None:
+                continue
+
+            height, width = image.shape[:2]
+            result = model.predict(
+                str(image_path),
+                imgsz=self.config.image_size,
+                verbose=False,
+            )[0]
+
+            prediction = self.result_to_mask(result, (height, width))
+            prediction = self.pothole_postprocess(prediction)
+
+            label_path = label_dir / image_path.with_suffix(".txt").name
+            ground_truth = self.label_to_mask(label_path, (height, width))
+
+            self._add_mask_counts(counts, prediction, ground_truth)
+
+        return self._metrics_from_counts(counts)
+
+    @staticmethod
+    def _add_mask_counts(counts: dict[str, float], prediction: np.ndarray, ground_truth: np.ndarray) -> None:
+        prediction = prediction.astype(bool)
+        ground_truth = ground_truth.astype(bool)
+        counts["tp"] += np.logical_and(prediction, ground_truth).sum()
+        counts["tn"] += np.logical_and(~prediction, ~ground_truth).sum()
+        counts["fp"] += np.logical_and(prediction, ~ground_truth).sum()
+        counts["fn"] += np.logical_and(~prediction, ground_truth).sum()
+
+    @staticmethod
+    def _metrics_from_counts(counts: dict[str, float]) -> dict[str, float]:
+        tp = counts["tp"]
+        tn = counts["tn"]
+        fp = counts["fp"]
+        fn = counts["fn"]
+        eps = 1e-7
+        recall = tp / (tp + fn + eps)
+        specificity = tn / (tn + fp + eps)
+        return {
+            "dice": 2 * tp / (2 * tp + fp + fn + eps),
+            "balanced_accuracy": (recall + specificity) / 2,
+        }
