@@ -1,11 +1,11 @@
 from __future__ import annotations
 import json
 import shutil
-from collections import defaultdict
 from pathlib import Path
 import cv2
 import numpy as np
 from it.akron.config import Config
+from it.akron.dataset.dataset import PotholeDatasetManager
 
 
 class YOLOSegmentationConfig:
@@ -18,7 +18,7 @@ class YOLOSegmentationConfig:
     dataset_yaml = Config.YOLO_DATASET_YAML
     project_dir = Config.YOLO_PROJECT_DIR
     model_path = Config.YOLO_MODEL_PATH
-    class_names = None
+    class_names = {0: "pothole"}
 
 
 class YOLOSegmentationPipeline:
@@ -29,10 +29,12 @@ class YOLOSegmentationPipeline:
         Config.create_project_folders()
 
     def prepare_dataset(self) -> Path:
-        self._copy_images("train")
-        self._copy_images("valid")
-        self._create_labels_from_coco("train")
-        self._create_labels_from_coco("valid")
+        if not Config.SPLIT_DATA_DIR.exists():
+            PotholeDatasetManager().prepare()
+
+        for split_name in ("train", "valid", "test"):
+            self._copy_split_from_unet(split_name)
+            self._create_labels_from_masks(split_name)
         return self._write_dataset_yaml()
 
     def train(self):
@@ -57,9 +59,12 @@ class YOLOSegmentationPipeline:
     def validate(self) -> dict[str, float]:
         from ultralytics import YOLO
 
+        if not self.config.dataset_yaml.exists():
+            self.prepare_dataset()
+
         model_path = self.config.model_path if self.config.model_path.exists() else self.config.model_name
         model = YOLO(str(model_path))
-        metrics = model.val(data=str(self.config.dataset_yaml), imgsz=self.config.image_size)
+        metrics = model.val(data=str(self.config.dataset_yaml), imgsz=self.config.image_size, split="test")
         precision = float(metrics.seg.mp)
         recall = float(metrics.seg.mr)
         f1 = 2 * precision * recall / (precision + recall + 1e-8)
@@ -125,8 +130,8 @@ class YOLOSegmentationPipeline:
                 clean[labels == label_id] = 1
         return clean
 
-    def _copy_images(self, split_name: str) -> None:
-        source_dir = Config.RAW_DATA_DIR / split_name
+    def _copy_split_from_unet(self, split_name: str) -> None:
+        source_dir = Config.SPLIT_DATA_DIR / split_name / "images"
         destination_dir = Config.DATA_DIR / "yolo" / "images" / split_name
         destination_dir.mkdir(parents=True, exist_ok=True)
         for old_file in destination_dir.glob("*.*"):
@@ -135,54 +140,53 @@ class YOLOSegmentationPipeline:
             if image_path.suffix.lower() in self.IMAGE_EXTENSIONS:
                 shutil.copy2(image_path, destination_dir / image_path.name)
 
-    def _create_labels_from_coco(self, split_name: str) -> None:
-        source_dir = Config.RAW_DATA_DIR / split_name
-        annotation_path = source_dir / "_annotations.coco.json"
+    def _create_labels_from_masks(self, split_name: str) -> None:
+        masks_dir = Config.SPLIT_DATA_DIR / split_name / "masks"
         labels_dir = Config.DATA_DIR / "yolo" / "labels" / split_name
         labels_dir.mkdir(parents=True, exist_ok=True)
         for old_file in labels_dir.glob("*.txt"):
             old_file.unlink()
 
-        coco = json.loads(annotation_path.read_text(encoding="utf-8"))
-        categories = {category["id"]: index for index, category in enumerate(coco["categories"])}
-        images = {image["id"]: image for image in coco["images"]}
-        annotations_by_image: dict[int, list[dict]] = defaultdict(list)
-        for annotation in coco["annotations"]:
-            annotations_by_image[annotation["image_id"]].append(annotation)
+        for mask_path in masks_dir.iterdir():
+            if mask_path.suffix.lower() not in self.IMAGE_EXTENSIONS:
+                continue
 
-        for image_id, annotations in annotations_by_image.items():
-            image_info = images[image_id]
-            width, height = image_info["width"], image_info["height"]
-            label_path = labels_dir / Path(image_info["file_name"]).with_suffix(".txt").name
+            mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+            if mask is None:
+                continue
+
+            mask = (mask > 0).astype(np.uint8)
+            height, width = mask.shape
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            label_path = labels_dir / mask_path.with_suffix(".txt").name
+
             with label_path.open("w", encoding="utf-8") as file:
-                for annotation in annotations:
-                    class_id = categories[annotation["category_id"]]
-                    for segmentation in annotation.get("segmentation", []):
-                        normalized = [
-                            value / width if index % 2 == 0 else value / height
-                            for index, value in enumerate(segmentation)
-                        ]
-                        file.write(f"{class_id} {' '.join(map(str, normalized))}\n")
+                for contour in contours:
+                    if cv2.contourArea(contour) < Config.POSTPROCESS_MIN_AREA:
+                        continue
+
+                    epsilon = 0.002 * cv2.arcLength(contour, closed=True)
+                    polygon = cv2.approxPolyDP(contour, epsilon, closed=True).reshape(-1, 2)
+                    if len(polygon) < 3:
+                        continue
+
+                    normalized = []
+                    for x, y in polygon:
+                        normalized.append(float(x) / width)
+                        normalized.append(float(y) / height)
+
+                    file.write(f"0 {' '.join(map(str, normalized))}\n")
 
     def _write_dataset_yaml(self) -> Path:
-        class_names = self._class_names_from_coco()
-        names = "\n".join(f"  {key}: {value}" for key, value in class_names.items())
+        names = "\n".join(f"  {key}: {value}" for key, value in self.config.class_names.items())
         content = f"""path: {Config.DATA_DIR / "yolo"}
 
 train: images/train
 val: images/valid
+test: images/test
 
 names:
 {names}
 """
         self.config.dataset_yaml.write_text(content.strip(), encoding="utf-8")
         return self.config.dataset_yaml
-
-    @staticmethod
-    def _class_names_from_coco() -> dict[int, str]:
-        annotation_path = Config.RAW_DATA_DIR / "train" / "_annotations.coco.json"
-        coco = json.loads(annotation_path.read_text(encoding="utf-8"))
-        return {
-            index: category.get("name", f"class_{index}")
-            for index, category in enumerate(coco["categories"])
-        }
