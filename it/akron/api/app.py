@@ -20,6 +20,7 @@ def create_app() -> Flask:
     @app.get("/")
     def dashboard():
         metrics = _read_json(Config.METRICS_PATH)
+        yolo_metrics = _read_json(Config.YOLO_METRICS_PATH)
         summary = Config.SUMMARY_PATH.read_text(encoding="utf-8") if Config.SUMMARY_PATH.exists() else ""
         plots = sorted(path.name for path in Config.PLOTS_DIR.glob("*.png"))
         predictions = sorted(path.name for path in Config.PREDICTIONS_DIR.glob("*.png"))
@@ -28,6 +29,7 @@ def create_app() -> Flask:
             status=status,
             error=error,
             metrics=metrics,
+            yolo_metrics=yolo_metrics,
             summary=summary,
             plots=plots,
             predictions=predictions,
@@ -95,6 +97,17 @@ HTML = """
           <div class="metric"><strong>{{ key }}</strong><span>{{ "%.5f"|format(value) if value is number else value }}</span></div>
         {% else %}
           <p>Nessuna metrica disponibile.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section>
+      <h2>Metriche YOLOv8</h2>
+      <div class="card">
+        {% for key, value in yolo_metrics.items() %}
+          <div class="metric"><strong>{{ key }}</strong><span>{{ "%.5f"|format(value) if value is number else value }}</span></div>
+        {% else %}
+          <p>Nessuna metrica YOLO disponibile. Esegui <code>akron-potholes yolo_evaluate</code>.</p>
         {% endfor %}
       </div>
     </section>

@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from it.akron.config import Config
 from it.akron.dataset.dataset import PotholeDatasetManager, PotholeSegmentationDataset
 from it.akron.models.model import ModelSummary, UNet
+from it.akron.models.yolo import YOLOSegmentationPipeline
 
 
 class DiceLoss(nn.Module):
@@ -189,9 +190,10 @@ class PotholeTrainer:
                 logits = model(image.unsqueeze(0).to(self.device))
                 probability_map = torch.sigmoid(logits)[0, 0].cpu().numpy()
             prediction = (probability_map > threshold).astype(np.uint8)
+            prediction = YOLOSegmentationPipeline.pothole_postprocess(prediction, min_area=min_area)
             image_np = self._denormalize(image)
             mask_np = mask[0].numpy()
-            boxes = self._boxes(probability_map, threshold, min_area)
+            boxes = self._boxes(prediction, min_area)
             self._save_prediction_figure(index + 1, image_np, mask_np, prediction, boxes)
 
     def _run_epoch(
@@ -241,7 +243,18 @@ class PotholeTrainer:
 
     @staticmethod
     def _add_counts(counts: dict[str, float], logits: torch.Tensor, masks: torch.Tensor, threshold: float) -> None:
-        predictions = torch.sigmoid(logits) > threshold
+        probability_maps = torch.sigmoid(logits).detach().cpu().numpy()[:, 0]
+        postprocessed_predictions = []
+        for probability_map in probability_maps:
+            prediction = (probability_map > threshold).astype(np.uint8)
+            prediction = YOLOSegmentationPipeline.pothole_postprocess(prediction)
+            postprocessed_predictions.append(prediction)
+
+        predictions = torch.tensor(
+            np.stack(postprocessed_predictions),
+            device=masks.device,
+            dtype=torch.bool,
+        ).unsqueeze(1)
         targets = masks > 0.5
         counts["tp"] += (predictions & targets).sum().item()
         counts["tn"] += (~predictions & ~targets).sum().item()
@@ -316,22 +329,21 @@ class PotholeTrainer:
         return (image_tensor.cpu() * std + mean).clamp(0, 1).permute(1, 2, 0).numpy()
 
     @staticmethod
-    def _boxes(probability_map: np.ndarray, threshold: float, min_area: int) -> list[dict[str, float]]:
-        prediction = (probability_map > threshold).astype(np.uint8)
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(prediction, connectivity=8)
+    def _boxes(prediction_mask: np.ndarray, min_area: int) -> list[dict[str, float]]:
+        prediction_mask = (prediction_mask > 0).astype(np.uint8)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(prediction_mask, connectivity=8)
         boxes = []
         for label_id in range(1, num_labels):
             area = stats[label_id, cv2.CC_STAT_AREA]
             if area < min_area:
                 continue
-            component_mask = labels == label_id
             boxes.append(
                 {
                     "x": int(stats[label_id, cv2.CC_STAT_LEFT]),
                     "y": int(stats[label_id, cv2.CC_STAT_TOP]),
                     "w": int(stats[label_id, cv2.CC_STAT_WIDTH]),
                     "h": int(stats[label_id, cv2.CC_STAT_HEIGHT]),
-                    "confidence": float(probability_map[component_mask].mean()),
+                    "confidence": 1.0,
                 }
             )
         return boxes

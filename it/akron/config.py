@@ -18,6 +18,7 @@ class Config:
     PLOTS_DIR = ARTIFACTS_DIR / "plots"
     PREDICTIONS_DIR = ARTIFACTS_DIR / "predictions"
     METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
+    YOLO_METRICS_PATH = ARTIFACTS_DIR / "yolo_metrics.json"
     HISTORY_PATH = ARTIFACTS_DIR / "history.json"
     SUMMARY_PATH = ARTIFACTS_DIR / "model_summary.txt"
 
@@ -37,6 +38,17 @@ class Config:
     AUGMENTATIONS_PER_IMAGE = 4
     THRESHOLD = 0.4
     BASE_CHANNELS = 32
+    POSTPROCESS_MIN_AREA = 10
+    POSTPROCESS_KERNEL_SIZE = 2
+
+    YOLO_MODEL_NAME = "yolov8n-seg.pt"
+    YOLO_IMAGE_SIZE = 256
+    YOLO_EPOCHS = 15
+    YOLO_BATCH_SIZE = 12
+    YOLO_DATASET_YAML = DATA_DIR / "yolo" / "dataset.yaml"
+    YOLO_PROJECT_DIR = ARTIFACTS_DIR / "yolo_runs"
+    YOLO_MODEL_DIR = MODEL_DIR / "yolo"
+    YOLO_MODEL_PATH = YOLO_MODEL_DIR / "best.pt"
 
     @staticmethod
     def device() -> torch.device:
@@ -52,5 +64,8 @@ class Config:
             cls.ARTIFACTS_DIR,
             cls.PLOTS_DIR,
             cls.PREDICTIONS_DIR,
+            cls.YOLO_DATASET_YAML.parent,
+            cls.YOLO_PROJECT_DIR,
+            cls.YOLO_MODEL_DIR,
         ]:
             folder.mkdir(parents=True, exist_ok=True)

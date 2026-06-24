@@ -10,13 +10,13 @@ class AkronPotholeCli:
         command(args)
 
     def _run_download(self, args: argparse.Namespace) -> None:
-        from it.akron.dataset import PotholeDatasetManager
+        from it.akron.dataset.dataset import PotholeDatasetManager
 
         location = PotholeDatasetManager().download_from_roboflow(args.api_key)
         print(f"Dataset scaricato in: {location}")
 
     def _run_prepare(self, args: argparse.Namespace) -> None:
-        from it.akron.dataset import PotholeDatasetManager
+        from it.akron.dataset.dataset import PotholeDatasetManager
 
         stats = PotholeDatasetManager().prepare()
         print("Split completato.")
@@ -24,7 +24,7 @@ class AkronPotholeCli:
             print(f"{key}: {value}")
 
     def _run_train(self, args: argparse.Namespace) -> None:
-        from it.akron.trainer import PotholeTrainer
+        from it.akron.training.trainer import PotholeTrainer
 
         history = PotholeTrainer().train()
         print("Training terminato.")
@@ -32,7 +32,7 @@ class AkronPotholeCli:
         print(f"Best model: {Config.MODEL_PATH}")
 
     def _run_evaluate(self, args: argparse.Namespace) -> None:
-        from it.akron.trainer import PotholeTrainer
+        from it.akron.training.trainer import PotholeTrainer
 
         metrics = PotholeTrainer().evaluate(args.threshold)
         print("Metriche sul test set")
@@ -40,13 +40,33 @@ class AkronPotholeCli:
             print(f"{key}: {value:.5f}")
 
     def _run_predict(self, args: argparse.Namespace) -> None:
-        from it.akron.trainer import PotholeTrainer
+        from it.akron.training.trainer import PotholeTrainer
 
         PotholeTrainer().save_predictions(count=args.count, threshold=args.threshold)
         print(f"Predizioni salvate in: {Config.PREDICTIONS_DIR}")
 
+    def _run_yolo_prepare(self, args: argparse.Namespace) -> None:
+        from it.akron.models.yolo import YOLOSegmentationPipeline
+
+        yaml_path = YOLOSegmentationPipeline().prepare_dataset()
+        print(f"Dataset YOLO preparato: {yaml_path}")
+
+    def _run_yolo_train(self, args: argparse.Namespace) -> None:
+        from it.akron.models.yolo import YOLOSegmentationPipeline
+
+        YOLOSegmentationPipeline().train()
+        print(f"Modello YOLO salvato in: {Config.YOLO_MODEL_PATH}")
+
+    def _run_yolo_evaluate(self, args: argparse.Namespace) -> None:
+        from it.akron.models.yolo import YOLOSegmentationPipeline
+
+        metrics = YOLOSegmentationPipeline().validate()
+        print("Metriche YOLOv8 segmentation")
+        for key, value in metrics.items():
+            print(f"{key}: {value:.5f}")
+
     def _run_api(self, args: argparse.Namespace) -> None:
-        from it.akron.app import create_app
+        from it.akron.api.app import create_app
 
         app = create_app()
         app.run(host=args.host, port=args.port, debug=args.debug)
@@ -69,6 +89,10 @@ class AkronPotholeCli:
         predict = subparsers.add_parser("predict")
         predict.add_argument("--threshold", type=float, default=Config.THRESHOLD)
         predict.add_argument("--count", type=int, default=5)
+
+        subparsers.add_parser("yolo_prepare")
+        subparsers.add_parser("yolo_train")
+        subparsers.add_parser("yolo_evaluate")
 
         api = subparsers.add_parser("api")
         api.add_argument("--host", default="127.0.0.1")
