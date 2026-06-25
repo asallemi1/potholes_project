@@ -1,0 +1,8 @@
+path: /content/potholes_project/data/yolo
+
+train: images/train
+val: images/valid
+test: images/test
+
+names:
+  0: pothole
