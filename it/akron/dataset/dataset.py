@@ -18,7 +18,7 @@ class PotholeDatasetManager:
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
     def download_from_roboflow(self, api_key: str | None = None) -> Path:
-        api_key = "vhzjMQXcncYPLEbfG8Pd"
+        #api_key = "vhzjMQXcncYPLEbfG8Pd"
         key = api_key or os.getenv("ROBOFLOW_API_KEY")
         if not key:
             raise RuntimeError("Imposta ROBOFLOW_API_KEY solo per il primo download.")
