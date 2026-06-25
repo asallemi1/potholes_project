@@ -44,6 +44,11 @@ def create_app() -> Flask:
     def refresh():
         trainer.refresh_dashboard_artifacts()
         return redirect(url_for("dashboard"))
+    
+    @app.post("/refresh-predictions")
+    def refresh_predictions():
+        trainer.save_predictions(count=5, threshold=Config.THRESHOLD)
+        return redirect(url_for("dashboard"))
 
     @app.get("/plots/<path:filename>")
     def plots(filename: str):
@@ -74,7 +79,7 @@ HTML = """
     header { padding: 24px 32px; background: #17324d; color: white; }
     main { max-width: 1200px; margin: 0 auto; padding: 24px 32px; }
     section { margin-bottom: 32px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 16px; }
     .card { background: white; border: 1px solid #d8dee6; border-radius: 6px; padding: 16px; }
     .metric { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #edf0f3; }
     img { width: 100%; background: white; border: 1px solid #d8dee6; }
@@ -91,7 +96,13 @@ HTML = """
   <main>
     <section>
       <form method="post" action="{{ url_for('refresh') }}">
-        <button type="submit">Rigenera risultati</button>
+        <button type="submit">Cambia threshold</button>
+      </form>
+    </section>
+
+    <section>
+      <form method="post" action="{{ url_for('refresh_predictions') }}">
+        <button type="submit">Mostra altre predizioni</button>
       </form>
     </section>
 

@@ -184,8 +184,13 @@ class PotholeTrainer:
 
         model = self.load_model()
         dataset = PotholeSegmentationDataset("test")
-        for index in range(min(count, len(dataset))):
-            image, mask = dataset[index]
+        indices = random.sample(
+            range(len(dataset)),
+            min(count, len(dataset))
+        )
+
+        for output_index, dataset_index in enumerate(indices, start=1):
+            image, mask = dataset[dataset_index]
             with torch.no_grad():
                 logits = model(image.unsqueeze(0).to(self.device))
                 probability_map = torch.sigmoid(logits)[0, 0].cpu().numpy()
@@ -194,7 +199,7 @@ class PotholeTrainer:
             image_np = self._denormalize(image)
             mask_np = mask[0].numpy()
             boxes = self._boxes(prediction, min_area)
-            self._save_prediction_figure(index + 1, image_np, mask_np, prediction, boxes)
+            self._save_prediction_figure(output_index, image_np, mask_np, prediction, boxes)
 
     def _run_epoch(
         self,
@@ -343,7 +348,7 @@ class PotholeTrainer:
                     "y": int(stats[label_id, cv2.CC_STAT_TOP]),
                     "w": int(stats[label_id, cv2.CC_STAT_WIDTH]),
                     "h": int(stats[label_id, cv2.CC_STAT_HEIGHT]),
-                    "confidence": 1.0,
+                    #"confidence": 1.0,
                 }
             )
         return boxes
@@ -366,8 +371,8 @@ class PotholeTrainer:
         axis.set_title("Bounding box predette")
         axis.axis("off")
         for box in boxes:
-            axis.add_patch(Rectangle((box["x"], box["y"]), box["w"], box["h"], fill=False, linewidth=2))
-            axis.text(box["x"], max(box["y"] - 5, 0), f"{box['confidence'] * 100:.1f}%", fontsize=9)
+            axis.add_patch(Rectangle((box["x"], box["y"]), box["w"], box["h"], fill=False, edgecolor="red", linewidth=2))
+            #axis.text(box["x"], max(box["y"] - 5, 0), f"{box['confidence'] * 100:.1f}%", fontsize=9)
 
         fig.tight_layout()
         fig.savefig(Config.PREDICTIONS_DIR / f"prediction_{index:02d}.png", dpi=150)
