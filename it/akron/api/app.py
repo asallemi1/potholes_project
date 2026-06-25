@@ -12,8 +12,13 @@ def create_app() -> Flask:
     status = "not ready"
     error = ""
     try:
-        status = trainer.ensure_model()
-        trainer.refresh_dashboard_artifacts()
+        if Config.MODEL_PATH.exists():
+            status = "loaded"
+        else:
+            status = "missing model"
+            error = f"Model file not found: {Config.MODEL_PATH}"
+        #status = trainer.ensure_model()
+        #trainer.refresh_dashboard_artifacts()
     except Exception as exc:
         error = str(exc)
 
