@@ -84,7 +84,7 @@ class AkronPotholeCli:
         subparsers.add_parser("train")
 
         evaluate = subparsers.add_parser("evaluate")
-        evaluate.add_argument("--threshold", type=float, default=0.5)
+        evaluate.add_argument("--threshold", type=float, default=0.4)
 
         predict = subparsers.add_parser("predict")
         predict.add_argument("--threshold", type=float, default=Config.THRESHOLD)
