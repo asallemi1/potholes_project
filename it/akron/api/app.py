@@ -95,12 +95,6 @@ HTML = """
   </header>
   <main>
     <section>
-      <form method="post" action="{{ url_for('refresh') }}">
-        <button type="submit">Cambia threshold</button>
-      </form>
-    </section>
-
-    <section>
       <form method="post" action="{{ url_for('refresh_predictions') }}">
         <button type="submit">Mostra altre predizioni</button>
       </form>

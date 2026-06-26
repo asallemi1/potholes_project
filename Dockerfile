@@ -16,4 +16,4 @@ COPY . .
 EXPOSE 5000
 
 # Comando di esecuzione dell'app
-CMD ["python", "-m", "it.akron.app"]
+CMD ["python", "-m", "it.akron.api.app"]
