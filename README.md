@@ -293,17 +293,108 @@ Se il training esaurisce la memoria della GPU, prova a ridurre `BATCH_SIZE` o `Y
 | `artifacts/plots/` | Curve e confusion matrix |
 | `artifacts/predictions/` | Predizioni visuali |
 
+
 ## Docker
 
-La repository include un `Dockerfile` per containerizzare l'ambiente Python. Build:
+La repository include un `Dockerfile` per creare un'immagine Docker dell'ambiente Python.
+
+L'immagine non contiene dataset, modelli addestrati o artifact generati. Al primo utilizzo l'utente deve quindi scaricare il dataset, prepararlo e addestrare il modello tramite i comandi CLI.
+
+Build dell'immagine:
 
 ```bash
 docker build -t potholes-project .
 ```
 
-Avvio consigliato della dashboard:
+Per mantenere persistenti dataset, modelli e risultati tra un container e l'altro, monta le cartelle `data`, `saved_model` e `artifacts` come volumi.
+
+Download del dataset:
 
 ```bash
-docker run --rm -p 5000:5000 potholes-project python -m it.akron.cli api --host 0.0.0.0 --port 5000
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli download --api-key SUA_API_KEY
+```
+
+Preparazione del dataset:
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli prepare
+```
+
+Training U-Net:
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli train
+```
+
+Valutazione e predizioni:
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli evaluate
+```
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli predict
+```
+
+Pipeline YOLO:
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli yolo_prepare
+```
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli yolo_train
+```
+
+```bash
+docker run --rm \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli yolo_evaluate
+```
+
+Avvio della dashboard Flask:
+
+```bash
+docker run --rm -p 5000:5000 \
+  -v ${PWD}/data:/akron-potholes/data \
+  -v ${PWD}/saved_model:/akron-potholes/saved_model \
+  -v ${PWD}/artifacts:/akron-potholes/artifacts \
+  potholes-project python -m it.akron.cli api --host 0.0.0.0 --port 5000
+```
+
+Apri poi il browser su:
+
+```text
+http://127.0.0.1:5000
 ```
 
